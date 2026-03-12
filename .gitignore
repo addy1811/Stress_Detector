@@ -14,14 +14,10 @@ venv/
 env/
 .venv/
  
-backend/keystroke_lstm_model.pt
-backend/scaler.pkl
-backend/model_config.pkl
 model/keystroke_lstm_model.pt
 model/scaler.pkl
 model/model_config.pkl
-*.pt
-*.pkl
+
 X_test.npy
 y_test.npy
  
