@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import axios from "axios";
-
+ 
 import ShaderBackground  from "./components/ShaderBackground";
 import RealTimeTypingBox from "./components/RealTimeTypingBox";
 import FeaturePlot       from "./components/FeaturePlot";
@@ -8,14 +8,14 @@ import StressDisplay     from "./components/StressDisplay";
 import CalibrationPanel  from "./components/CalibrationPanel";
 import StatsRow          from "./components/StatsRow";
 import SignalBreakdown   from "./components/SignalBreakdown";
-
+ 
 import { extractFeatures, extractMetrics } from "./utils/featureEngine";
 import { computeStressScore, resetBaseline } from "./utils/stressScorer";
 import { glassCard } from "./styles";
-
+ 
 const SMOOTHING_ALPHA  = 0.20;
 const CALIBRATION_SECS = 15;
-
+ 
 export default function App() {
   const [smoothedProb,   setSmoothedProb]   = useState(null);
   const [label,          setLabel]          = useState(null);
@@ -28,25 +28,26 @@ export default function App() {
   const [calibrating,    setCalibrating]    = useState(false);
   const [calibrated,     setCalibrated]     = useState(false);
   const [calibCountdown, setCalibCountdown] = useState(CALIBRATION_SECS);
-
+ 
   const ewmaRef       = useRef(null);
   const calibStart    = useRef(null);
+ 
   const userBaseline  = useRef(null);
-  const calibMetrics  = useRef([]);  
-
+  const calibMetrics  = useRef([]);   
+ 
   const smoothDisplay = (score) => {
     if (ewmaRef.current === null) ewmaRef.current = score;
     ewmaRef.current = SMOOTHING_ALPHA * score + (1 - SMOOTHING_ALPHA) * ewmaRef.current;
     return ewmaRef.current;
   };
-
-  //  <<<<<<    Calibration timer >>>>>>>>
+ 
   useEffect(() => {
     if (!calibrating) return;
     const id = setInterval(() => {
       const remaining = Math.max(0, CALIBRATION_SECS - (Date.now() - calibStart.current) / 1000);
       setCalibCountdown(Math.ceil(remaining));
       if (remaining <= 0) {
+     
         const samples = calibMetrics.current;
         if (samples.length > 0) {
           const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -55,7 +56,7 @@ export default function App() {
             hold:    avg(samples.map(m => m.avgHold)),
             latency: avg(samples.map(m => m.latencyMean)),
           };
-          console.log(" User baseline set:", userBaseline.current);
+          console.log("User baseline set:", userBaseline.current);
         }
         calibMetrics.current = [];
         setCalibrating(false);
@@ -64,7 +65,7 @@ export default function App() {
     }, 500);
     return () => clearInterval(id);
   }, [calibrating]);
-
+ 
   const startCalibration = () => {
     resetBaseline();
     ewmaRef.current      = null;
@@ -78,13 +79,14 @@ export default function App() {
     setLabel(null);
     setSignals(null);
   };
-
+ 
   const handleEvents = useCallback(async (events) => {
     setLastTyped(Date.now());
     if (events.length < 10) return;
-
+ 
     const metrics  = extractMetrics(events);
     if (!metrics) return;
+ 
     if (calibrating) {
       calibMetrics.current.push(metrics);
       return;
@@ -92,38 +94,43 @@ export default function App() {
 
     const features = extractFeatures(events, userBaseline.current);
     if (!features.length) return;
-
+ 
     setFeatureHistory(h => [...h.slice(-200), ...features]);
     setIsLoading(true);
-
+ 
     try {
-      let modelProb = 0.5; 
+      let modelProb = 0.5;   
+      const isLocal = window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1';
       try {
         const { data } = await axios.post(
-          "http://localhost:5000/predict",
+          window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+            ? "http://localhost:5000/predict"
+            : "https://keystroke-backend.onrender.com/predict",
           { features },
           { timeout: 2000 }
         );
         modelProb = data.stress_prob;
         setErrorMsg(null);
       } catch {
-        setErrorMsg("Model offline — using rule-based scoring only.");
+        if (isLocal) setErrorMsg("Model offline — using rule-based scoring only.");
+        else setErrorMsg(null);
       }
-
+ 
       // Hybrid score: rules (75%) + LSTM (25%)
       const result = computeStressScore(metrics, modelProb);
       const final  = smoothDisplay(result.score);
-
+ 
       setSmoothedProb(final);
       setLabel(result.label);
       setSignals(result.signals);
-
+ 
     } finally {
       setIsLoading(false);
     }
   }, [calibrating]);
-
-  // 15s idle
+ 
+  // 15 idle
   useEffect(() => {
     const id = setInterval(() => {
       if (Date.now() - lastTyped > 15000) {
@@ -134,14 +141,15 @@ export default function App() {
     }, 1000);
     return () => clearInterval(id);
   }, [lastTyped]);
-
+ 
   return (
     <div style={{ minHeight: '100vh', position: 'relative', fontFamily: "'Rajdhani', monospace" }}>
-
+ 
       <ShaderBackground stressLevel={smoothedProb ?? 0} />
-
+ 
       <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', padding: '0 1rem 4rem' }}>
-
+ 
+        {/* Header */}
         <header style={{ maxWidth: 800, margin: '0 auto', padding: '2.5rem 0 1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div style={{ fontSize: '2rem', filter: 'drop-shadow(0 0 12px rgba(100,200,255,0.8))' }}>⌨</div>
           <div>
@@ -156,9 +164,9 @@ export default function App() {
             <div style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: '#4fc3f7', boxShadow: '0 0 12px #4fc3f7', animation: 'pulse 1s infinite' }} />
           )}
         </header>
-
+ 
         <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-
+ 
           <StressDisplay
             stressProb={smoothedProb}
             label={label}
@@ -166,21 +174,21 @@ export default function App() {
             calibCountdown={calibCountdown}
             baselineReady={signals?.baselineReady}
           />
-
+ 
           {signals && <SignalBreakdown signals={signals} />}
-
+ 
           <div style={glassCard}>
             <div style={{ fontSize: '0.65rem', letterSpacing: '0.2em', color: 'rgba(150,200,255,0.5)', textTransform: 'uppercase', marginBottom: '0.6rem' }}>
-               Type Anything
+              ◈ Type Anything
             </div>
             <RealTimeTypingBox onEvents={handleEvents} />
             {errorMsg && (
               <div style={{ marginTop: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(255,180,0,0.1)', border: '1px solid rgba(255,180,0,0.3)', borderRadius: 4, color: '#ffb74d', fontSize: '0.78rem' }}>
-                 {errorMsg}
+                ⚠ {errorMsg}
               </div>
             )}
           </div>
-
+ 
           <CalibrationPanel
             calibrating={calibrating}
             calibrated={calibrated}
@@ -190,16 +198,16 @@ export default function App() {
               : null}
             onStart={startCalibration}
           />
-
+ 
           <StatsRow featureHistory={featureHistory} />
-
+ 
           {featureHistory.length > 0 && (
             <div style={glassCard}>
               <button
                 onClick={() => setShowChart(v => !v)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(150,200,255,0.7)', fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', width: '100%', textAlign: 'left', padding: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'inherit' }}
               >
-                <span> Feature Trends</span>
+                <span>◈ Feature Trends</span>
                 <span style={{ transition: 'transform 0.3s', transform: showChart ? 'rotate(180deg)' : 'none', display: 'inline-block' }}>▼</span>
               </button>
               {showChart && <div style={{ marginTop: '1rem' }}><FeaturePlot featureHistory={featureHistory} /></div>}
@@ -207,7 +215,7 @@ export default function App() {
           )}
         </div>
       </div>
-
+ 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700;800&display=swap');
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
